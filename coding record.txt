@@ -1,0 +1,25 @@
+------record------
+0901 - hang_gai
+1. predict
+2. regret
+3. baseline
+4. watchlist
+
+0906 - wanting
+1. landmark process may be not required
+2. action_abstract: we need to change the action output from the agent,
+   maybe we could rewrite the model.learn func
+   if the algorithm is discrete we just change it into[0,1,-1];
+   elif the algorithm is continuous we may add a softmax func, but it is better not to change the algo
+   may be we can try DDQN first.
+3. actions_signal:
+4. I think the regret is a percentage instead of the time series,
+    but your code inspire me that
+    we could draw the (best_asset, agent_asset, baseline) into one plot for comparison
+5. best_action:  the landmark action
+   if signal = "^":
+        sell(Whole warehouse)
+   elif signal = "v":
+        buy(Whole warehouse)
+6.train and test 80/20, and also debug
+  split_point = int(len(df)*0.8)
