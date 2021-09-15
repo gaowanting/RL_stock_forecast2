@@ -64,7 +64,7 @@ class DQN:
             # action = action_dist.sample().view(-1, 1)
             # action = q_values.max(1)[1].item()
             action = action_probs.max(1)[1].item()
-            print(action)
+            # print(action)
         return action
 
     def update(self):

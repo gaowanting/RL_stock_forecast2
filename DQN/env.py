@@ -151,7 +151,7 @@ class StockLearningEnv(gym.Env):
             "total_assets": [],
             "reward": []
         }
-        # [持有金额,0,0,0,……,O,C,H,L,V,O,C,H,L,V,……]
+        # [持有金额,0,0,0,……,O,C,H,L,V,O,C,H,L,V,……
         init_state = np.array(
             [self.initial_amount]
             + [0] * len(self.assets)
