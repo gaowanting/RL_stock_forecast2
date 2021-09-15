@@ -16,7 +16,6 @@ curr_path = os.path.dirname(__file__)
 parent_path = os.path.dirname(curr_path)
 sys.path.append(parent_path)  # add current terminal path to sys.path
 
-import gym
 import torch
 import datetime
 
@@ -37,11 +36,7 @@ class DQNConfig:
                            '/' + curr_time + '/results/'  # path to save results
         self.model_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
                           '/' + curr_time + '/models/'  # path to save models
-        # self.result_path = curr_path + "/outputs/" + self.env + \
-        #                    '/' + curr_time + '/results/'  # path to save results
-        # self.model_path = curr_path + "/outputs/" + self.env + \
-        #                   '/' + curr_time + '/models/'  # path to save models
-        self.train_eps = 300  # max trainng episodes
+        self.train_eps = 30  # max trainng episodes
         self.eval_eps = 50  # number of episodes for evaluating
         self.gamma = 0.95
         self.epsilon_start = 0.90  # start epsilon of e-greedy policy
@@ -57,12 +52,10 @@ class DQNConfig:
 
 
 def env_agent_config(cfg, seed=1):
-    # env = gym.make(cfg.env)
+
     env = cfg.env
-    print(dir(env))
+
     env.seed(seed)
-    # print("env.observation_space:")
-    # print(env.observation_space)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.n
     agent = DQN(state_dim, action_dim, cfg)
@@ -128,7 +121,7 @@ def eval(cfg, env, agent):
 
 
 if __name__ == "__main__":
-    print(parent_path)
+    start_time = datetime.datetime.now()
     df = pd.read_csv(r"../new_data_file/train.csv")
     cfg = DQNConfig()
 
@@ -140,6 +133,8 @@ if __name__ == "__main__":
     save_results(rewards, ma_rewards, tag='train', path=cfg.result_path)
     plot_rewards(rewards, ma_rewards, tag="train",
                  algo=cfg.algo, path=cfg.result_path)
+    end_time = datetime.datetime.now()
+    print("training finished, time{}".format(end_time - start_time))
 
     # eval
     env, agent = env_agent_config(cfg, seed=10)

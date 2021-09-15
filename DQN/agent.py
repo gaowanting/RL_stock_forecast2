@@ -22,6 +22,8 @@ import numpy as np
 from common.memory import ReplayBuffer
 from common.model import MLP
 
+import torch.nn.functional as F
+from torch.distributions import Categorical
 
 class DQN:
     def __init__(self, state_dim, action_dim, cfg):
@@ -41,6 +43,7 @@ class DQN:
             target_param.data.copy_(param.data)
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=cfg.lr)
         self.memory = ReplayBuffer(cfg.memory_capacity)
+        self.REWARD_SCALE = 0.5/action_dim
 
     def choose_action(self, state):
         '''选择动作
@@ -52,11 +55,16 @@ class DQN:
             action = random.randrange(self.action_dim)
         return action
 
-    def predict(self,state):
+    def predict(self, state):
         with torch.no_grad():
             state = torch.tensor([state], device=self.device, dtype=torch.float32)
             q_values = self.policy_net(state)
-            action = q_values.max(1)[1].item()
+            action_probs = F.softmax(q_values/self.REWARD_SCALE, -1)
+            # action_dist = Categorical(action_probs)
+            # action = action_dist.sample().view(-1, 1)
+            # action = q_values.max(1)[1].item()
+            action = action_probs.max(1)[1].item()
+            print(action)
         return action
 
     def update(self):
@@ -65,6 +73,8 @@ class DQN:
         # 从memory中随机采样transition
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.memory.sample(
             self.batch_size)
+
+
         '''转为张量
         例如tensor([[-4.5543e-02, -2.3910e-01,  1.8344e-02,  2.3158e-01],...,[-1.8615e-02, -2.3921e-01, -1.1791e-02,  2.3400e-01]])'''
         state_batch = torch.tensor(
@@ -82,17 +92,22 @@ class DQN:
         '''torch.gather:对于a=torch.Tensor([[1,2],[3,4]]),那么a.gather(1,torch.Tensor([[0],[1]]))=torch.Tensor([[1],[3]])'''
         q_values = self.policy_net(state_batch).gather(
             dim=1, index=action_batch)  # 等价于self.forward
+
         # 计算所有next states的V(s_{t+1})，即通过target_net中选取reward最大的对应states
         next_q_values = self.target_net(next_state_batch).max(
             1)[0].detach()  # 比如tensor([ 0.0060, -0.0171,...,])
+
         # 计算 expected_q_value
         # 对于终止状态，此时done_batch[0]=1, 对应的expected_q_value等于reward
         expected_q_values = reward_batch + \
             self.gamma * next_q_values * (1-done_batch)
+
         # self.loss = F.smooth_l1_loss(q_values,expected_q_values.unsqueeze(1)) # 计算 Huber loss
         loss = nn.MSELoss()(q_values, expected_q_values.unsqueeze(1))  # 计算 均方误差loss
+
         # 优化模型
         self.optimizer.zero_grad()  # zero_grad清除上一步所有旧的gradients from the last step
+
         # loss.backward()使用backpropagation计算loss相对于所有parameters(需要gradients)的微分
         loss.backward()
         # for param in self.policy_net.parameters():  # clip防止梯度爆炸

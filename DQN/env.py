@@ -2,13 +2,9 @@ from typing import Any, List, Tuple
 import numpy as np
 import pandas as pd
 import random
-from copy import deepcopy
 import gym
 import time
 from gym import spaces
-
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from stable_baselines3.common import logger
 
 
 class StockLearningEnv(gym.Env):
@@ -141,14 +137,10 @@ class StockLearningEnv(gym.Env):
 
     def reset(self) -> np.ndarray:
         self.seed()
-        self.sum_trades = 0  # 购买的总股数
+        # self.sum_trades = 0  # 购买的总股数
         self.max_total_assets = self.initial_amount
-        # if self.random_start:
-        #     self.starting_point = random.choice(range(int(len(self.dates) * 0.5))) # 前半段随机取点
-        # else:
         self.starting_point = 0  # else:
         self.date_index = self.starting_point
-        # self.turbulence = 0
         self.episode += 1
         self.actions_memory = []
         self.transaction_memory = []
@@ -201,32 +193,6 @@ class StockLearningEnv(gym.Env):
         self.log_step(reason=reason, terminal_reward=reward)
         gl_pct = self.account_information["total_assets"][-1] / self.initial_amount
         reward_pct = gl_pct
-
-        # logger.record("environment/GainLoss_pct", (gl_pct - 1) * 100)
-        # logger.record(
-        #     "environment/total_assets",
-        #     int(self.account_information["total_assets"][-1])
-        # )
-        #
-        # logger.record("environment/total_reward_pct", (reward_pct - 1) * 100)
-        # logger.record("environment/total_trades", self.sum_trades)
-        # logger.record(
-        #     "environment/avg_daily_trades",
-        #     self.sum_trades / (self.current_step)
-        # )
-        # logger.record(
-        #     "environment/avg_daily_trades_per_asset",
-        #     self.sum_trades / (self.current_step) / len(self.assets)
-        # )
-        # logger.record("environment/completed_steps", self.current_step)
-        # logger.record(
-        #     "environment/sum_rewards", np.sum(self.account_information["reward"])
-        # )
-        # logger.record(
-        #     "environment/retreat_proportion",
-        #     self.account_information["total_assets"][-1] / self.max_total_assets
-        # )
-
         return state, reward, True, {}
 
     def log_header(self) -> None:
@@ -267,7 +233,7 @@ class StockLearningEnv(gym.Env):
 
     def get_transactions(self, actions: np.ndarray) -> np.ndarray:
         """获取实际交易的股数"""
-        actions -= actions-2
+        actions -= actions - 1
         self.actions_memory.append(actions)
         actions = actions * self.hmax
 
@@ -291,13 +257,13 @@ class StockLearningEnv(gym.Env):
             self, actions: np.ndarray
     ) -> Tuple[list, int, bool, dict]:
 
-        self.sum_trades += np.sum(np.abs(actions))
+        # self.sum_trades += np.sum(np.abs(actions))
         self.log_header()
         if (self.current_step + 1) % self.print_verbosity == 0:
             self.log_step(reason="update")
         if self.date_index == len(self.dates) - 1:
             if self.is_train:
-                save_path = f"./train_action{self.episode}.csv"
+                save_path = f"train_record/train_action{self.episode}.csv"
                 self.save_transaction_information().to_csv(save_path)
             return self.return_terminal(reward=self.get_reward())
         else:
@@ -323,7 +289,6 @@ class StockLearningEnv(gym.Env):
 
             if (spend + costs) > coh:  # 如果买不起
                 if self.patient:
-                    # self.log_step(reason="CASH SHORTAGE")
                     transactions = np.where(transactions > 0, 0, transactions)
                     spend = 0
                     costs = 0
@@ -344,27 +309,6 @@ class StockLearningEnv(gym.Env):
             self.state_memory.append(state)
             return state, reward, False, {}
 
-    # # 返回sb3的矢量化环境
-    # def get_sb_env(self) -> Tuple[Any, Any]:
-    #     def get_self():
-    #         return deepcopy(self)
-    #
-    #     e = DummyVecEnv([get_self])
-    #     # Reset all the environments and return an array of observations,
-    #     # or a tuple of observation arrays
-    #     obs = e.reset()
-    #     return e, obs
-
-    # 多进程环境  此函数未被调用过
-    # def get_multiproc_env(
-    #     self, n: int = 10
-    # ) -> Tuple[Any, Any]:
-    #     def get_self():
-    #         return deepcopy(self)
-    #
-    #     e = SubprocVecEnv([get_self for _ in range(n)], start_method="fork")
-    #     obs = e.reset()
-    #     return e, obs
 
     # 存资产信息
     def save_asset_memory(self) -> pd.DataFrame:

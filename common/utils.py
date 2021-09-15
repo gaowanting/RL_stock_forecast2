@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 
 
-def save_results(rewards,ma_rewards,tag='train',path='./results'):
+def save_results(rewards, ma_rewards, tag='train', path='./results'):
     '''save rewards and ma_rewards
     '''
     np.save(path+'{}_rewards.npy'.format(tag), rewards)

@@ -63,10 +63,12 @@ def preprocessor():
     plt.figure(figsize=(20, 8))
     plt.plot(data_df["date"], data_df["close"])
     plt.show()
+
     # 更改 date 列数据格式, 添加 day 列(星期一为 0), 再将格式改回成 str
     data_df["date"] = data_df.date.apply(lambda x: datetime.strptime(x[:4] + '-' + x[4:6] + '-' + x[6:], "%Y-%m-%d"))
     data_df["day"] = data_df["date"].dt.dayofweek
     data_df["date"] = data_df.date.apply(lambda x: x.strftime("%Y-%m-%d"))
+
     # 删除为空的数据行
     data_df = data_df.dropna()
     data_df = data_df.sort_values(by=['date', 'tic']).reset_index(drop=True)

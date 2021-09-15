@@ -76,13 +76,13 @@ class Trainer(object):
                 train_data: pd.DataFrame, 
                 trade_data: pd.DataFrame) -> DummyVecEnv:
         """分别返回训练环境和交易环境"""
-        e_train_gym = StockLearningEnv(df = train_data,
+        e_train_gym = StockLearningEnv(df=train_data,
                                        is_train= True,
                                                     random_start = True,
                                                     **config.ENV_PARAMS)
         env_train, _ = e_train_gym.get_sb_env()
 
-        e_trade_gym = StockLearningEnv(df = trade_data,
+        e_trade_gym = StockLearningEnv(df=trade_data,
                                        is_train=False,
                                                     random_start = False,
                                                     **config.ENV_PARAMS)
