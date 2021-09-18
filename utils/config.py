@@ -20,9 +20,8 @@ TECHNICAL_INDICATORS_LIST = [
     'kdjk', 'kdjd', 'kdjj', "rsi_6", "rsi_12", "rsi_24"
 ]
 
-
 # 强化学习模型列表
-MODEL_LIST = ["a2c", "ddpg", "ppo", "sac", "td3"]
+MODEL_LIST = ["a2c", "ddpg", "ppo", "sac", "td3", "dqn"]
 
 # 模型的超参数
 A2C_PARAMS = {
@@ -53,19 +52,24 @@ SAC_PARAMS = {
     "learning_starts": 2000,
     "ent_coef": "auto_0.1"
 }
+DQN_PARAMS = {
+    "batch_size": 96,
+    "learning_rate": 0.00025,
+    "buffer_size": 480
+}
 
 # 环境的超参数
 information_cols = TECHNICAL_INDICATORS_LIST + ["close", "day", "amount", "change", "daily_variance"]
 ENV_PARAMS = {
-    "initial_amount": 1e6,
-    "hmax": 5000, 
-    "currency": '￥',
-    "buy_cost_pct": 3e-3,
-    "sell_cost_pct": 3e-3,
-    "cache_indicator_data": True,
-    "daily_information_cols": information_cols, 
-    "print_verbosity": 500,
-    "patient":True,
+    "initial_amount": 1e6,      # 初始资金
+    "hmax": 5000,   # 最大可交易数量
+    "currency": '￥',    # 资金单位
+    "buy_cost_pct": 3e-3,       # 购买手续费
+    "sell_cost_pct": 3e-3,      # 卖出手续费
+    "cache_indicator_data": True,  # 是否将env的数据存入缓存（就是把dataframe换成嵌套列表[[],[],[]]的格式）
+    "daily_information_cols": information_cols,     # 环境的单只股票每日输入项目
+    "print_verbosity": 100,     # 多少步打印一次
+    "patient":True,             # 执行交易时，没钱了就忍者，有钱再买
 }
 
 # tensorboard_log 路径
