@@ -22,7 +22,7 @@ import datetime
 from common.utils import save_results, make_dir
 from common.plot import plot_rewards
 from DQN.agent import DQN
-from env import StockLearningEnv
+from env2 import StockLearningEnv
 curr_time = datetime.datetime.now().strftime(
     "%Y%m%d-%H%M%S")  # obtain current time
 
@@ -120,7 +120,7 @@ def eval(cfg, env, agent):
 
 if __name__ == "__main__":
     start_time = datetime.datetime.now()
-    df = pd.read_csv(r"../new_data_file/train.csv")
+    df = pd.read_csv(r"../common/new_data_file/data.csv")
     cfg = DQNConfig()
 
     # train
