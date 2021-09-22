@@ -8,20 +8,21 @@ from stable_baselines3 import A2C
 from stable_baselines3 import PPO
 from stable_baselines3 import TD3
 from stable_baselines3 import SAC
+from stable_baselines3 import DQN
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 
 from utils import config
 # from utils.preprocessors import split_data
 from utils.env import StockLearningEnv
-
-MODELS = {"a2c": A2C, "ddpg": DDPG, "td3": TD3, "sac": SAC, "ppo": PPO}
+#@
+MODELS = {"a2c": A2C, "ddpg": DDPG, "td3": TD3, "sac": SAC, "ppo": PPO, "dqn": DQN}
 MODEL_KWARGS = {x: config.__dict__["{}_PARAMS".format(x.upper())] for x in MODELS.keys()}
-
 
 NOISE = {
     "normal": NormalActionNoise,
     "ornstein_uhlenbeck": OrnsteinUhlenbeckActionNoise
 }
+
 
 class DRL_Agent():
     """强化学习交易智能体
@@ -32,8 +33,8 @@ class DRL_Agent():
 
     @staticmethod
     def DRL_prediction(
-        model: Any, environment: Any
-        ) -> pd.DataFrame:
+            model: Any, environment: Any
+    ) -> pd.DataFrame:
         """回测函数"""
         test_env, test_obs = environment.get_sb_env()
 
@@ -57,20 +58,20 @@ class DRL_Agent():
         self.env = env
 
     def get_model(
-        self,
-        model_name: str,
-        policy: str = "MlpPolicy",
-        policy_kwargs: dict = None,
-        model_kwargs: dict = None,
-        verbose: int = 1
+            self,
+            model_name: str,
+            policy: str = "MlpPolicy",
+            policy_kwargs: dict = None,
+            model_kwargs: dict = None,
+            verbose: int = 1
     ) -> Any:
         """根据超参数生成模型"""
         if model_name not in MODELS:
             raise NotImplementedError("NotImplementedError")
-        
+
         if model_kwargs is None:
             model_kwargs = MODEL_KWARGS[model_name]
-        
+
         if "action_noise" in model_kwargs:
             n_actions = self.env.action_space.shape[-1]
             model_kwargs["action_noise"] = NOISE[model_kwargs["action_noise"]](
@@ -86,15 +87,17 @@ class DRL_Agent():
             policy_kwargs=policy_kwargs,
             **model_kwargs
         )
-        
+
         return model
 
     def train_model(
-        self, model: Any, tb_log_name: str, total_timesteps: int = 5000
-        ) -> Any:
+            self, model: Any, tb_log_name: str, total_timesteps: int = 5000
+    ) -> Any:
         """训练模型"""
         model = model.learn(total_timesteps=total_timesteps, tb_log_name=tb_log_name)
         return model
+
+
 '''
 if __name__ == "__main__":
     from pull_data import Pull_data

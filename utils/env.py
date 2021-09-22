@@ -1,4 +1,5 @@
-from typing import Any, List, Tuple
+from abc import ABC
+from typing import Any, List, Tuple, Type
 import numpy as np
 import pandas as pd
 import random
@@ -7,11 +8,10 @@ import gym
 import time
 from gym import spaces
 
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from stable_baselines3.common import logger
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 
-class StockLearningEnv(gym.Env):
+class StockLearningEnv(gym.Env, ABC):
     """构建强化学习交易环境
         Attributes
             df: 构建环境时所需要用到的行情数据
@@ -21,8 +21,8 @@ class StockLearningEnv(gym.Env):
             hmax: 最大可交易的数量
             print_verbosity: 打印的频率
             initial_amount: 初始资金量 1e6
-            daily_information_cols: 构建状态时所考虑的列 (OCHLV)
-            cache_indicator_data: 是否把数据放到内存中
+            daily_information_cols: 构建状态时所考虑的列 (OCHLV...)
+            cache_indicator_data: 是否把数据放到内存中，就是把dataframe换成嵌套列表[[],[],[]]的格式
             random_start: 是否随机位置开始交易（训练和回测环境分别为True和False）
             patient: 是否在资金不够时不执行交易操作，等到有足够资金时再执行
             currency: 货币单位
@@ -39,13 +39,16 @@ class StockLearningEnv(gym.Env):
             hmax: int = 10,
             print_verbosity: int = 10,
             initial_amount: int = 1e6,
-            daily_information_cols: List = ["open", "close", "high", "low", "volume"],
+            daily_information_cols=None,
             cache_indicator_data: bool = True,
             random_start: bool = True,
             patient: bool = False,
             currency: str = "￥",
-            is_train: bool = True
+            is_train: bool = True,
+            is_DQN: bool = False
     ) -> None:
+        if daily_information_cols is None:
+            daily_information_cols = ["open", "close", "high", "low", "volume"]
         self.df = df
         self.stock_col = "tic"
         self.assets = df[self.stock_col].unique()  # all tickers
@@ -61,14 +64,20 @@ class StockLearningEnv(gym.Env):
         self.buy_cost_pct = buy_cost_pct
         self.sell_cost_pct = sell_cost_pct
         self.daily_information_cols = daily_information_cols  # List(OCHLV)
+        self.is_DQN = is_DQN
 
         # 状态空间  持有资金 + all ticikers + all ticikers*[15个]  801
         self.state_space = (
                 1 + len(self.assets) + len(self.assets) * len(self.daily_information_cols)
         )
+
+
+
         # 每一股的买卖状态(-1,1)
         self.action_space = spaces.Box(low=-1, high=1, shape=(len(self.assets),))
         # spaces.Discrete(3)
+        if self.is_DQN:
+            self.action_space = gym.spaces.Discrete(3)
 
         # 正负无穷，维度为state_space
         self.observation_space = spaces.Box(
@@ -89,7 +98,8 @@ class StockLearningEnv(gym.Env):
             """
             print("加载数据缓存")
             self.cached_data = [
-                self.get_date_vector(i) for i, _ in enumerate(self.dates)
+                self.get_date_vector(i) for i, _ in enumerate(self.dates)  # i返回从0开始的索引序列 enumerate枚举类，返回 [(index,
+                # value),()...]
             ]
             print("数据缓存成功!")
 
@@ -115,7 +125,7 @@ class StockLearningEnv(gym.Env):
         return self.state_memory[-1][1: len(self.assets) + 1]
 
     @property
-    def closings(self) -> List:
+    def closings(self) -> np.array:
         """每支股票当前的收盘价"""
         return np.array(self.get_date_vector(self.date_index, cols=["close"]))
 
@@ -189,40 +199,14 @@ class StockLearningEnv(gym.Env):
         ]
         self.episode_history.append(rec)
         print(self.template.format(*rec))
+        print(self.is_train)
 
     def return_terminal(
             self, reason: str = "Last Date", reward: int = 0
-    ) -> Tuple[list, int, bool, dict]:
+    ) -> Tuple[np.array, int, bool, dict]:
         """terminal 的时候执行的操作"""
         state = self.state_memory[-1]
         self.log_step(reason=reason, terminal_reward=reward)
-        gl_pct = self.account_information["total_assets"][-1] / self.initial_amount
-        reward_pct = gl_pct
-
-        # logger.record("environment/GainLoss_pct", (gl_pct - 1) * 100)
-        # logger.record(
-        #     "environment/total_assets",
-        #     int(self.account_information["total_assets"][-1])
-        # )
-        #
-        # logger.record("environment/total_reward_pct", (reward_pct - 1) * 100)
-        # logger.record("environment/total_trades", self.sum_trades)
-        # logger.record(
-        #     "environment/avg_daily_trades",
-        #     self.sum_trades / (self.current_step)
-        # )
-        # logger.record(
-        #     "environment/avg_daily_trades_per_asset",
-        #     self.sum_trades / (self.current_step) / len(self.assets)
-        # )
-        # logger.record("environment/completed_steps", self.current_step)
-        # logger.record(
-        #     "environment/sum_rewards", np.sum(self.account_information["reward"])
-        # )
-        # logger.record(
-        #     "environment/retreat_proportion",
-        #     self.account_information["total_assets"][-1] / self.max_total_assets
-        # )
 
         return state, reward, True, {}
 
@@ -271,9 +255,10 @@ class StockLearningEnv(gym.Env):
         actions = np.where(self.closings > 0, actions, 0)
 
         # 去除被除数为 0 的警告
-        out = np.zeros_like(actions)
-        zero_or_not = self.closings != 0
-        actions = np.divide(actions, self.closings, out=out, where=zero_or_not)
+        if not self.is_DQN:
+            out = np.zeros_like(actions)
+            zero_or_not = self.closings != 0
+            actions = np.divide(actions, self.closings, out=out, where=zero_or_not)
 
         # 不能卖的比持仓的多
         actions = np.maximum(actions, -np.array(self.holdings))
@@ -286,7 +271,8 @@ class StockLearningEnv(gym.Env):
     def step(
             self, actions: np.ndarray
     ) -> Tuple[list, int, bool, dict]:
-
+        if self.is_DQN:
+            actions = actions -1
         self.sum_trades += np.sum(np.abs(actions))
         self.log_header()
         if (self.current_step + 1) % self.print_verbosity == 0:
@@ -294,7 +280,7 @@ class StockLearningEnv(gym.Env):
         if self.date_index == len(self.dates) - 1:
             if self.is_train:
                 print(self.episode)
-                save_path = f"./new_train_file/train_action{self.episode}.csv"
+                save_path: str = f"./new_train_file/train_action{self.episode}.csv"
                 self.save_transaction_information().to_csv(save_path)
             return self.return_terminal(reward=self.get_reward())
         else:
@@ -352,17 +338,6 @@ class StockLearningEnv(gym.Env):
         obs = e.reset()
         return e, obs
 
-    # 多进程环境  此函数未被调用过
-    # def get_multiproc_env(
-    #     self, n: int = 10
-    # ) -> Tuple[Any, Any]:
-    #     def get_self():
-    #         return deepcopy(self)
-    #
-    #     e = SubprocVecEnv([get_self for _ in range(n)], start_method="fork")
-    #     obs = e.reset()
-    #     return e, obs
-
     # 存资产信息
     def save_asset_memory(self) -> pd.DataFrame:
         if self.current_step == 0:
@@ -372,18 +347,6 @@ class StockLearningEnv(gym.Env):
             self.account_information["date"] = self.dates[-len(self.account_information["cash"]):]
             return pd.DataFrame(self.account_information)
 
-    # 存动作信息
-    def save_action_memory(self) -> pd.DataFrame:
-        if self.current_step == 0:
-            return None
-        else:
-            return pd.DataFrame(
-                {
-                    "date": self.dates[-len(self.account_information["cash"]):],
-                    "actions": self.actions_memory,
-                    "transactions": self.transaction_memory
-                }
-            )
 
     # 存交易信息
     def save_transaction_information(self) -> pd.DataFrame:
@@ -406,5 +369,5 @@ class StockLearningEnv(gym.Env):
         # 基于首次交易全仓买入股票后不再交易的assets量，反映个股自身变动
         # close = self.df["close"][-len(self.account_information["cash"]):]
         close = self.df["close"][0]
-        initial_assets = int(self.account_information["total_assets"][0] / (close * 100)) * 100
+        initial_assets = int((self.account_information["total_assets"][0]/(1 + self.buy_cost_pct)) / (close * 100)) * 100
         return self.df["close"][-len(self.account_information["cash"]):] * initial_assets
