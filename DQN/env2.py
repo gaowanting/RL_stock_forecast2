@@ -88,15 +88,17 @@ class StockLearningEnv(gym.Env):
                 self.save_transaction_information().to_csv(save_path)
             return self.return_terminal(reward=self.get_reward())
         else:
+            real_action = actions - 1
+            transactions = real_action * 10
             begin_cash = self.cash_on_hand
             assert_value = np.dot(self.holdings, self.closings)  # 目前总持股金额
+            reward = self.get_reward()
             self.account_information["cash"].append(begin_cash)
             self.account_information["asset_value"].append(assert_value)
             self.account_information["total_assets"].append(begin_cash + assert_value)
-            reward = self.get_reward()
             self.account_information["reward"].append(reward)
-
-            transactions = (actions-1)*10
+            self.actions_memory.append(real_action)
+            self.transaction_memory.append(transactions)
             sells = -np.clip(transactions, -np.inf, 0)
             proceeds = np.dot(sells, self.closings)
             costs = proceeds * self.sell_cost_pct
@@ -105,17 +107,18 @@ class StockLearningEnv(gym.Env):
             spend = np.dot(buys, self.closings)
             costs += spend * self.buy_cost_pct
 
-            if (spend + costs) > coh:  # 如果买不起
-                if self.patient:
-                    transactions = np.where(transactions > 0, 0, transactions)
-                    spend = 0
-                    costs = 0
-                else:
-                    return self.return_terminal(
-                        reason="CASH SHORTAGE", reward=self.get_reward()
-                    )
+            # 如果为负数，我们可以理解为做空，因此暂时不用考虑买不买得起，
+            # if (spend + costs) > coh:  # 如果买不起
+            #     if self.patient:
+            #         transactions = np.where(transactions > 0, 0, transactions)
+            #         spend = 0
+            #         costs = 0
+            #     else:
+            #         return self.return_terminal(
+            #             reason="CASH SHORTAGE", reward=self.get_reward()
+            #         )
 
-            assert (spend + costs) <= coh
+            # assert (spend + costs) <= coh
             coh = coh - spend - costs
             holdings_updated = self.holdings + transactions
             self.date_index += 1
@@ -123,12 +126,6 @@ class StockLearningEnv(gym.Env):
             for i in self.state_list:
                 state.append(self.df.loc[self.df.index[self.date_index], i])
             self.state_memory.append(state + [coh, holdings_updated])
-            # self.transaction_memory.append(transactions)
-            # self.actions_memory.append(actions)
-            # print('actions', actions, 'transactions', transactions)
-            # print(state)
-            # #assert state.__len__() == 6
-            # assert len(state) == 6
             return state, reward, False, {}
 
     def seed(self, seed: Any = None) -> None:
@@ -163,7 +160,7 @@ class StockLearningEnv(gym.Env):
             self, reason: str = "Last Date", reward: int = 0
     ) -> Tuple[list, int, bool, dict]:
         """terminal 的时候执行的操作"""
-        state = self.state_memory[-1]
+        state = self.state_memory[-1][:-2]
         self.log_step(reason=reason, terminal_reward=reward)
         gl_pct = self.account_information["total_assets"][-1] / self.initial_amount
         reward_pct = gl_pct
@@ -188,35 +185,11 @@ class StockLearningEnv(gym.Env):
             )
             self.printed_header = True
 
-
-    # # 存资产信息
-    # def save_asset_memory(self) -> pd.DataFrame:
-    #     if self.current_step == 0:
-    #         return None
-    #     else:
-    #         # 把目前的日期存到account_information中
-    #         self.account_information["date"] = self.dates[-len(self.account_information["cash"]):]
-    #         return pd.DataFrame(self.account_information)
-    #
-    # # 存动作信息
-    # def save_action_memory(self) -> pd.DataFrame:
-    #     if self.current_step == 0:
-    #         return None
-    #     else:
-    #         return pd.DataFrame(
-    #             {
-    #                 "date": self.dates[-len(self.account_information["cash"]):],
-    #                 "actions": self.actions_memory,
-    #                 "transactions": self.transaction_memory
-    #             }
-    #         )
-
     # 存交易信息
     def save_transaction_information(self) -> pd.DataFrame:
         if self.current_step == 0:
             return None
         else:
-            print("self.actions_memory", self.actions_memory)
             action_df = pd.DataFrame(
                 {
                     "close": self.df["close"][-len(self.account_information["cash"]):],

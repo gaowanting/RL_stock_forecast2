@@ -14,7 +14,7 @@
 #
 # print("code with me")
 
-l = []
-l.append(None)
-l[0] = 1
+l = list(range(10))
+l2 = l[:-2]
 print(l)
+print(l2)
