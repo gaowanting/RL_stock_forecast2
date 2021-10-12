@@ -23,7 +23,8 @@ class StockLearningEnv(gym.Env):
             initial_amount: int = 1e6,
             patient: bool = False,
             currency: str = "￥",
-            is_train: bool = True
+            is_train: bool = True,
+            window_size: int = 20
     ) -> None:
 
         self.df = df
@@ -38,8 +39,9 @@ class StockLearningEnv(gym.Env):
         self.print_verbosity = print_verbosity
         self.buy_cost_pct = buy_cost_pct
         self.sell_cost_pct = sell_cost_pct
+        self.window_ = window_size
         self.state_list = self.get_state()
-        self.state_space = len(self.state_list)
+        self.state_space = len(self.state_list) * self.window_
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.state_space,)
@@ -55,6 +57,8 @@ class StockLearningEnv(gym.Env):
             "total_assets": [],
             "reward": []
         }
+        self.process_df()
+
 
     def reset(self) -> np.ndarray:
         self.seed()
@@ -75,6 +79,17 @@ class StockLearningEnv(gym.Env):
         self.state_memory.append(init_state + [0, 0])
         return init_state
 
+    def process_df(self):
+        # process self.df 计算ochlv环比并覆盖之
+        l = self.df.__len__()
+        for i in range(l):
+            if i == 0:
+                self.df.loc[self.df.index[0], ['open', 'high', 'low', 'close', 'volume']] = [1, 1, 1, 1, 1]
+                break
+            self.df.loc[self.df.index[l-i], ['open', 'high', 'low', 'close', 'volume']] = \
+                self.df.loc[self.df.index[l-i], ['open', 'high', 'low', 'close', 'volume']]/\
+                self.df.loc[self.df.index[l-i-1], ['open', 'high', 'low', 'close', 'volume']]
+
     def step(
             self, actions: np.ndarray
     ) -> Tuple[list, float, bool, dict]:
@@ -82,10 +97,10 @@ class StockLearningEnv(gym.Env):
         if (self.current_step + 1) % self.print_verbosity == 0:
             self.log_step(reason="update")
         # save evaluate information
-        if self.date_index == len(self.dates) - 1:
-            if self.is_train:
-                save_path = f"train_record/train_action{self.episode}.csv"
-                self.save_transaction_information().to_csv(save_path)
+        if self.date_index == len(self.dates) - 1 - self.window_:
+            # if self.is_train:
+            #     save_path = f"train_record/train_action{self.episode}.csv"
+            #     # self.save_transaction_information().to_csv(save_path)
             return self.return_terminal(reward=self.get_reward())
         else:
             real_action = actions - 1
@@ -124,7 +139,7 @@ class StockLearningEnv(gym.Env):
             self.date_index += 1
             state = []
             for i in self.state_list:
-                state.append(self.df.loc[self.df.index[self.date_index], i])
+                state += list(self.df.loc[self.df.index[range(self.date_index, self.date_index + self.window_)], i])
             self.state_memory.append(state + [coh, holdings_updated])
             return state, reward, False, {}
 
@@ -233,8 +248,7 @@ class StockLearningEnv(gym.Env):
     def get_state(self):
         state1 = ['kdjk', 'kdjd', 'kdjj', 'rsi_6', 'rsi_12', 'rsi_24']
         state2 = ['kdjk', 'kdjd', 'kdjj', 'rsi_6', 'rsi_12', 'rsi_24', "open", "close", "high", "low", "volume"]
-
-        return state1
+        return state2
 
     def get_reward(self) -> float:
         if self.current_step == 0:

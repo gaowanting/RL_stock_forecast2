@@ -50,7 +50,7 @@ class DQN:
         '''
         self.frame_idx += 1
         if random.random() > self.epsilon(self.frame_idx):
-            action = self.predict(state)
+            action, _ = self.predict(state)
         else:
             action = random.randrange(self.action_dim)
         return action
@@ -64,8 +64,7 @@ class DQN:
             # action = action_dist.sample().view(-1, 1)
             # action = q_values.max(1)[1].item()
             action = action_probs.max(1)[1].item()
-            # print(action)
-        return action
+        return action, action_probs.numpy()[0]
 
     def update(self):
         if len(self.memory) < self.batch_size:
