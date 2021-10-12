@@ -31,6 +31,7 @@ class DQNConfig:
     def __init__(self):
         self.algo = "DQN"  # name of algo
         # self.env = 'CartPole-v0'
+        df = pd.read_csv(r"../common/new_data_file/data.csv")
         self.env = StockLearningEnv(df)
         self.result_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
                            '/' + curr_time + '/results/'  # path to save results
@@ -101,7 +102,7 @@ def eval(cfg, env, agent):
         ep_reward = 0  # reward per episode
         state = env.reset()
         while True:
-            action = agent.predict(state)
+            action, _ = agent.predict(state)
             next_state, reward, done, _ = env.step(action)
             state = next_state
             ep_reward += reward
@@ -120,7 +121,7 @@ def eval(cfg, env, agent):
 
 if __name__ == "__main__":
     start_time = datetime.datetime.now()
-    df = pd.read_csv(r"../common/new_data_file/data.csv")
+
     cfg = DQNConfig()
 
     # train
@@ -140,3 +141,5 @@ if __name__ == "__main__":
     rewards, ma_rewards = eval(cfg, env, agent)
     save_results(rewards, ma_rewards, tag='eval', path=cfg.result_path)
     plot_rewards(rewards, ma_rewards, tag="eval", env=cfg.env, algo=cfg.algo, path=cfg.result_path)
+
+# streamlit
