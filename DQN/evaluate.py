@@ -26,7 +26,7 @@ class Evaluation:
         self.auc_showbuffer = []
         self.auc_show = []
 
-    def landmarket(self):
+    def mark(self):
         # signal the right action trading
         d = self.env.df.copy()
         d.index = range(len(d))
@@ -49,7 +49,7 @@ class Evaluation:
 
     def action_model(self):
         # use trained model to predict on eval data once
-        self.landmarket()
+        self.mark()
         state = self.env.reset()
         step_num = 0
         ture_num = 0

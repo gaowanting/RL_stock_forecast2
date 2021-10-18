@@ -13,14 +13,22 @@ from common.multiprocessing_env import SubprocVecEnv
 from A2C.model import ActorCritic
 from common.utils import save_results, make_dir
 from common.plot import plot_rewards
+from DQN.env2 import StockLearningEnv
+import pandas as pd
+
 
 curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") # obtain current time
 class A2CConfig:
     def __init__(self) -> None:
         self.algo='A2C'
-        self.env= 'CartPole-v0'
-        self.result_path = curr_path+"/outputs/" +self.env+'/'+curr_time+'/results/'  # path to save results
-        self.model_path = curr_path+"/outputs/" +self.env+'/'+curr_time+'/models/'  # path to save models
+        self.env= StockLearningEnv(df)
+        # self.env= 'CartPole-v0'
+        # self.result_path = curr_path+"/outputs/" +self.env+'/'+curr_time+'/results/'  # path to save results
+        # self.model_path = curr_path+"/outputs/" +self.env+'/'+curr_time+'/models/'  # path to save models
+        self.result_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
+                           '/' + curr_time + '/results/'  # path to save results
+        self.model_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
+                          '/' + curr_time + '/models/'  # path to save models
         self.n_envs = 8
         self.gamma = 0.99
         self.hidden_size = 256
@@ -110,7 +118,9 @@ def train(cfg,envs):
         loss.backward()
         optimizer.step()
     return test_rewards, test_ma_rewards
+
 if __name__ == "__main__":
+    df = pd.read_csv(r"../common/new_data_file/data.csv")
     cfg = A2CConfig()
     envs = [make_envs(cfg.env) for i in range(cfg.n_envs)]
     envs = SubprocVecEnv(envs) # 8 env

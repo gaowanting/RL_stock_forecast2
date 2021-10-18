@@ -94,4 +94,5 @@ class ActorCritic(nn.Module):
 
 
 # ac = ActorCritic(25, 10)
+# print(ac(torch.rand((10, 25))))
 # print(ac.forward(torch.rand((10, 25))))

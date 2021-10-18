@@ -3,7 +3,6 @@ import tushare as ts
 import pandas as pd
 sys.path.append("..")
 from utils import config
-import learn.get_random_stockdata as get_data
 import datetime
 
 # print(sys.path)
