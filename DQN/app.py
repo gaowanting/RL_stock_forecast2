@@ -5,31 +5,26 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
+import os
 
 MDPP_D = st.sidebar.slider("MDPP_D", 1, 10, 5, 1)
 MDPP_P = st.sidebar.slider("MDPP_D", 0.001, 0.050, 0.03, 0.001)
 single_true = st.sidebar.checkbox("single_true", True)
 windows_size = st.sidebar.slider("windows_size", 10, 500, 50, 10)
-random_model = st.sidebar.checkbox("use_random_model?", True)
 
-cfg = DQNConfig()
-env, agent = env_agent_config(cfg, seed=1)
-if not random_model:
-    agent.load('outputs/StockLearningEnv/20210922-172114/models/')
-a = Evaluation(cfg, env, agent, MDPP_D, MDPP_P, single_true, windows_size)
-chart = st.line_chart(a.auc_show)
+for a, b, c in os.walk("train_record"):
+    train_record = c
+select_actiondf = st.sidebar.selectbox("choice_action_meomry", train_record)
+print(select_actiondf)
 
-a.action_model()
-mat = pd.DataFrame(index=['Macro', 'Weighted', 'micro'], columns=['accuracy', 'precision', 'recall', 'F1_score'])
+a = Evaluation(MDPP_D=MDPP_D, MDPP_P=MDPP_P, single_true=single_true, windows_size=windows_size)
 
-mat['accuracy'] = pd.Series(data=[a.accuracy(), '-', '-'], index=['Macro', 'Weighted', 'micro'])
-mat['precision'] = pd.Series(data=a.precision(), index=['Macro', 'Weighted', 'micro'])
-mat['recall'] = pd.Series(data=a.recall(), index=['Macro', 'Weighted', 'micro'])
-mat['F1_score'] = pd.Series(data=a.F1_score(), index=['Macro', 'Weighted', 'micro'])
-st.write("evaluate matrix", mat)
+dd = pd.read_csv("train_record/" + select_actiondf)
 
-
-a.auc(chart)
+show1 = a.auc(dd)
+show = a.sliding_curve(dd)
+st.line_chart(show1)
+chart2 = st.line_chart(show)
 
 
 

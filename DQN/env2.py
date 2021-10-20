@@ -23,7 +23,8 @@ class StockLearningEnv(gym.Env):
             initial_amount: int = 1e6,
             patient: bool = False,
             currency: str = "￥",
-            is_train: bool = True
+            is_train: bool = True,
+            window_size: int = 20
     ) -> None:
 
         self.df = df
@@ -38,8 +39,9 @@ class StockLearningEnv(gym.Env):
         self.print_verbosity = print_verbosity
         self.buy_cost_pct = buy_cost_pct
         self.sell_cost_pct = sell_cost_pct
+        self.window_size = 20
         self.state_list = self.get_state()
-        self.state_space = len(self.state_list)
+        self.state_space = len(self.state_list)*self.window_size
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.state_space,)
@@ -56,7 +58,6 @@ class StockLearningEnv(gym.Env):
             "reward": []
         }
         self.rolling_window = True
-        self.window_size = 20
         self.process_df()
 
     def process_df(self):
@@ -89,11 +90,10 @@ class StockLearningEnv(gym.Env):
             "reward": []
         }
         if self.rolling_window:
+            init_state = pd.DataFrame(np.zeros(shape=(len(self.state_list),self.window_size)))
+        else:
             init_state = [0] * self.state_space
             self.state_memory.append(init_state + [0, 0])
-        else:
-            init_state = pd.DataFrame(np.zeros_like(shape=(self.state_list,self.window_size)))
-
         return init_state
 
     def step(
@@ -148,8 +148,7 @@ class StockLearningEnv(gym.Env):
                 state = self.df.iloc[self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size],
                         self.state_list]
                 # 存入state_memory之前加入coh & holding_updated
-                state[self.df.index[self.date_index + self.window_size + 1], :] = [0] * len(self.state_list) - 2 + [coh,
-                                                                                                                    holdings_updated]
+                state[self.df.index[self.date_index + self.window_size + 1], :] = [0] * len(self.state_list) - 2 + [coh,                                                                                                             holdings_updated]
                 self.state_memory.append(state)
             else:
                 # state - single_day
@@ -170,7 +169,6 @@ class StockLearningEnv(gym.Env):
         """打印"""
         if terminal_reward is None:
             terminal_reward = self.account_information["reward"][-1]
-        # why reward is a list not a int?
         assets = self.account_information["total_assets"][-1]
         gl_pct = self.account_information["total_assets"][-1] / self.initial_amount  # GAINLOSS_PCT
 
@@ -228,6 +226,9 @@ class StockLearningEnv(gym.Env):
                     "close": self.df["close"][-len(self.account_information["cash"]):],
                     "episode": self.episode,
                     "actions": self.actions_memory,
+                    "score0": self.action_probability0,
+                    "score1": self.action_probability1,
+                    "score2": self.action_probability2,
                     "transactions": self.transaction_memory,
                     "total_assets": self.account_information["total_assets"],
                     "reward": self.get_reward(),
@@ -251,6 +252,7 @@ class StockLearningEnv(gym.Env):
     def cash_on_hand(self) -> float:
         """当前拥有的现金"""
         if self.rolling_window:
+            print(self.state_memory)
             coh = self.state_memory[-1].iloc[-1,-2]
         else:
             coh = self.state_memory[-1][-2]

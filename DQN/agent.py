@@ -53,13 +53,15 @@ class DQN:
             action, _ = self.predict(state)
         else:
             action = random.randrange(self.action_dim)
-        return action
+            _ = [0, 0, 0]
+        return action, _
 
     def predict(self, state):
         with torch.no_grad():
             state = torch.tensor([state], device=self.device, dtype=torch.float32)
             q_values = self.policy_net(state)
             action_probs = F.softmax(q_values/self.REWARD_SCALE, -1)
+            print(action_probs)
             # action_dist = Categorical(action_probs)
             # action = action_dist.sample().view(-1, 1)
             # action = q_values.max(1)[1].item()

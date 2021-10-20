@@ -71,8 +71,8 @@ def train(cfg, env, agent):
         done = False
         ep_reward = 0
         while True:
-            action = agent.choose_action(state)
-            next_state, reward, done, _ = env.step(action)
+            action, _ = agent.choose_action(state)
+            next_state, reward, done, _ = env.step(action, _)
             ep_reward += reward
             agent.memory.push(state, action, reward, next_state, done)
             state = next_state
@@ -103,7 +103,7 @@ def eval(cfg, env, agent):
         state = env.reset()
         while True:
             action, _ = agent.predict(state)
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, _ = env.step(action, _)
             state = next_state
             ep_reward += reward
             if done:
@@ -141,3 +141,5 @@ if __name__ == "__main__":
     rewards, ma_rewards = eval(cfg, env, agent)
     save_results(rewards, ma_rewards, tag='eval', path=cfg.result_path)
     plot_rewards(rewards, ma_rewards, tag="eval", env=cfg.env, algo=cfg.algo, path=cfg.result_path)
+
+# streamlit
