@@ -43,30 +43,37 @@ class DQN:
             target_param.data.copy_(param.data)
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=cfg.lr)
         self.memory = ReplayBuffer(cfg.memory_capacity)
-        self.REWARD_SCALE = 0.5/action_dim
+        # self.REWARD_SCALE = 0.5/action_dim
 
     def choose_action(self, state):
         '''选择动作
         '''
         self.frame_idx += 1
         if random.random() > self.epsilon(self.frame_idx):
-            action, _ = self.predict(state)
+            # action, _ = self.predict(state)
+            action = self.predict(state)
         else:
             action = random.randrange(self.action_dim)
-            _ = [0, 0, 0]
-        return action, _
+            # _ = [0, 0, 0]
+        return action
+        # return action, _
 
     def predict(self, state):
+        # 不求导
         with torch.no_grad():
             state = torch.tensor([state], device=self.device, dtype=torch.float32)
             q_values = self.policy_net(state)
-            action_probs = F.softmax(q_values/self.REWARD_SCALE, -1)
-            print(action_probs)
-            # action_dist = Categorical(action_probs)
-            # action = action_dist.sample().view(-1, 1)
+            action = list(q_values[0][0]).index(q_values[0][0].max())
             # action = q_values.max(1)[1].item()
-            action = action_probs.max(1)[1].item()
-        return action, action_probs.numpy()[0]
+        # return action, action_probs.numpy()[0]
+        return action
+
+    # def predict(self,state):
+    #     with torch.no_grad():
+    #         state = torch.tensor([state], device=self.device, dtype=torch.float32)
+    #         q_values = self.policy_net(state)
+    #         action = q_values.max(1)[1].item()
+    #     return action
 
     def update(self):
         if len(self.memory) < self.batch_size:
@@ -74,6 +81,7 @@ class DQN:
         # 从memory中随机采样transition
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.memory.sample(
             self.batch_size)
+        state_batch = [np.squeeze(i.T) for i in state_batch]
         '''转为张量
         例如tensor([[-4.5543e-02, -2.3910e-01,  1.8344e-02,  2.3158e-01],...,[-1.8615e-02, -2.3921e-01, -1.1791e-02,  2.3400e-01]])'''
         state_batch = torch.tensor(
@@ -93,9 +101,9 @@ class DQN:
             dim=1, index=action_batch)  # 等价于self.forward
 
         # 计算所有next states的V(s_{t+1})，即通过target_net中选取reward最大的对应states
-        next_q_values = self.target_net(next_state_batch).max(
+        next_q_values = self.target_net(next_state_batch)[0].max(
             1)[0].detach()  # 比如tensor([ 0.0060, -0.0171,...,])
-
+        # print(f'next_q_values{next_q_values}')
         # 计算 expected_q_value
         # 对于终止状态，此时done_batch[0]=1, 对应的expected_q_value等于reward
         expected_q_values = reward_batch + \
@@ -115,6 +123,7 @@ class DQN:
 
     def save(self, path):
         torch.save(self.target_net.state_dict(), path+'dqn_checkpoint.pth')
+        torch.save(self.target_net, path+'full_dqn_model.pth')
 
     def load(self, path):
         self.target_net.load_state_dict(torch.load(path+'dqn_checkpoint.pth'))

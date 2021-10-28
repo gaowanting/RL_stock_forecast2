@@ -11,6 +11,7 @@ LastEditTime: 2021-05-05 16:49:15
 '''
 import sys, os
 import pandas as pd
+from torch.utils.checkpoint import checkpoint
 
 curr_path = os.path.dirname(__file__)
 parent_path = os.path.dirname(curr_path)
@@ -31,8 +32,8 @@ class DQNConfig:
     def __init__(self):
         self.algo = "DQN"  # name of algo
         # self.env = 'CartPole-v0'
-        df = pd.read_csv(r"../common/new_data_file/data.csv")
-        self.env = StockLearningEnv(df)
+        self.df = pd.read_csv(r"common/new_data_file/data.csv")
+        self.env = StockLearningEnv(self.df)
         self.result_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
                            '/' + curr_time + '/results/'  # path to save results
         self.model_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
@@ -65,14 +66,17 @@ def train(cfg, env, agent):
     print('Start to train !')
     print(f'Env:{cfg.env}, Algorithm:{cfg.algo}, Device:{cfg.device}')
     rewards = []
-    ma_rewards = []  # moveing average reward
+    ma_rewards = []  # moving average reward
     for i_ep in range(cfg.train_eps):
         state = env.reset()
         done = False
         ep_reward = 0
-        while True:
-            action, _ = agent.choose_action(state)
-            next_state, reward, done, _ = env.step(action, _)
+        ep_step = 0
+        while ep_step < (len(cfg.df) - 2*env.window_size):
+            ep_step += 1
+            # action, _ = agent.choose_action(state)
+            action = agent.choose_action(state)
+            next_state, reward, done, _ = env.step(action)
             ep_reward += reward
             agent.memory.push(state, action, reward, next_state, done)
             state = next_state
@@ -141,5 +145,3 @@ if __name__ == "__main__":
     rewards, ma_rewards = eval(cfg, env, agent)
     save_results(rewards, ma_rewards, tag='eval', path=cfg.result_path)
     plot_rewards(rewards, ma_rewards, tag="eval", env=cfg.env, algo=cfg.algo, path=cfg.result_path)
-
-# streamlit

@@ -5,7 +5,10 @@ import random
 import gym
 import time
 from gym import spaces
+from sklearn import preprocessing
 
+pd.set_option('display.max_columns', 20)
+pd.set_option('display.max_rows', 20)
 
 class StockLearningEnv(gym.Env):
 
@@ -18,13 +21,11 @@ class StockLearningEnv(gym.Env):
             df: pd.DataFrame,
             buy_cost_pct: float = 3e-3,
             sell_cost_pct: float = 3e-3,
-            hmax: int = 10,
             print_verbosity: int = 10,
             initial_amount: int = 1e6,
             patient: bool = False,
             currency: str = "￥",
             is_train: bool = True,
-            window_size: int = 20
     ) -> None:
 
         self.df = df
@@ -34,13 +35,12 @@ class StockLearningEnv(gym.Env):
         self.patient = patient
         self.currency = currency
         self.is_train = is_train
-        self.hmax = hmax
         self.initial_amount = initial_amount
         self.print_verbosity = print_verbosity
         self.buy_cost_pct = buy_cost_pct
         self.sell_cost_pct = sell_cost_pct
         self.window_size = 20
-        self.state_list = self.get_state()
+        self.state_list = self.state
         self.state_space = len(self.state_list)*self.window_size
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
@@ -58,20 +58,31 @@ class StockLearningEnv(gym.Env):
             "reward": []
         }
         self.rolling_window = True
-        self.process_df()
+        self.normalization = 'standardization' # choose thw way to process normalization ('div_self' / 'div_close' / 'standardization')
+        self.do_normalization()
 
-    def process_df(self):
-        # process self.df 将ochlv处理为涨跌幅
-        self.df[["open", "close", "high", "low", "volume"]] = self.df[["open", "close", "high", "low", "volume"]].pct_change(-1)
-        # rolling_window = []
-        # temp_df = self.df.loc[:, self.state_list]
-        # for i in temp_df.rolling(window = self.window_size):
-        #     rolling_window.append(dict(i))
-        #     print("dict(i)")
-        #     print(dict(i))
-        # rolling_window = pd.Series(rolling_window)
-        # self.df['rolling_window'] = rolling_window
-        # print(self.df.head())
+
+    def do_normalization(self):
+        norm_list = ["open", "close", "high", "low", "volume"]
+        after_norm = ["open_", "close_", "high_", "low_", "volume_"]
+        if self.normalization == 'div_self':
+            # 将ochlv处理为涨跌幅
+            self.df[after_norm] = self.df[norm_list].pct_change(-1)
+        elif self.normalization == 'div_close':
+            # 将ochl处理为相较于前一天close的比例
+            temp = self.df[["open", "close", "high", "low"]].values[1:] / self.df[["close"]].values[:-1]
+            self.df = self.df[1:]
+            # volume 单独处理
+            self.df[["volume_"]] = self.df[["volume"]].pct_change(-1)
+            self.df[["open_", "close_", "high_", "low_"]] = temp
+        elif self.normalization == 'standardization':
+            pass
+            # for i in range(0, len(self.dates) - self.window_size,self.window_size):
+            #     temp = self.df.loc[self.df.index[i]:self.df.index[i + self.window_size - 1],norm_list]
+            #     scaler = preprocessing.StandardScaler().fit(temp)
+            #     self.df.loc[self.df.index[i]:self.df.index[i + self.window_size - 1],after_norm] = scaler.transform(temp)
+            # self.df = self.df.dropna()
+            # self.df.to_csv("test_st.csv")
 
 
     def reset(self) -> np.ndarray:
@@ -83,43 +94,51 @@ class StockLearningEnv(gym.Env):
         self.actions_memory = []
         self.transaction_memory = []
         self.state_memory = []
+        self.coh_memory = [1e+6]
+        self.holdings_memory = [0]
         self.account_information = {
             "cash": [],
             "asset_value": [],
             "total_assets": [],
             "reward": []
         }
-        if self.rolling_window:
-            init_state = pd.DataFrame(np.zeros(shape=(len(self.state_list),self.window_size)))
-        else:
-            init_state = [0] * self.state_space
-            self.state_memory.append(init_state + [0, 0])
+        init_state = np.zeros(self.state_space)
+        self.state_memory.append(init_state)
+        # else:
+        #     init_state = [0] * self.state_space
+        #     self.state_memory.append(init_state + [0, 0])
         return init_state
 
     def step(
             self, actions: np.ndarray
     ) -> Tuple[list, float, bool, dict]:
+    # def step(
+    #         self, actions: np.ndarray, action_p
+    # ) -> Tuple[list, float, bool, dict]:
+        # log
         self.log_header()
         if (self.current_step + 1) % self.print_verbosity == 0:
             self.log_step(reason="update")
-        # save evaluate information
+        # save evaluate information on last step for each episode
         if self.date_index == len(self.dates) - 1:
             if self.is_train:
                 save_path = f"train_record/train_action{self.episode}.csv"
                 self.save_transaction_information().to_csv(save_path)
-            return self.return_terminal(reward=self.get_reward())
+            return self.return_terminal(reward=self.reward)
         else:
             real_action = actions - 1
-            transactions = real_action * 10
+            transactions = real_action * 1000
             begin_cash = self.cash_on_hand
             assert_value = np.dot(self.holdings, self.closings)  # 目前总持股金额
-            reward = self.get_reward()
+            reward = self.reward
+
             self.account_information["cash"].append(begin_cash)
             self.account_information["asset_value"].append(assert_value)
             self.account_information["total_assets"].append(begin_cash + assert_value)
             self.account_information["reward"].append(reward)
             self.actions_memory.append(real_action)
             self.transaction_memory.append(transactions)
+
             sells = -np.clip(transactions, -np.inf, 0)
             proceeds = np.dot(sells, self.closings)
             costs = proceeds * self.sell_cost_pct
@@ -136,26 +155,46 @@ class StockLearningEnv(gym.Env):
             #         costs = 0
             #     else:
             #         return self.return_terminal(
-            #             reason="CASH SHORTAGE", reward=self.get_reward()
+            #             reason="CASH SHORTAGE", reward=self.reward
             #         )
-
             # assert (spend + costs) <= coh
+            
             coh = coh - spend - costs
             holdings_updated = self.holdings + transactions
             self.date_index += 1
-            if self.rolling_window:
-                # state - rolling_window
-                state = self.df.iloc[self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size],
-                        self.state_list]
-                # 存入state_memory之前加入coh & holding_updated
-                state[self.df.index[self.date_index + self.window_size + 1], :] = [0] * len(self.state_list) - 2 + [coh,                                                                                                             holdings_updated]
-                self.state_memory.append(state)
-            else:
-                # state - single_day
-                state = [self.df.loc[self.df.index[self.date_index], self.state_list]]
-                self.state_memory.append(state + [coh, holdings_updated])
 
+
+            #if (self.date_index + self.window_size - 1) < len(self.df):
+                # do standardization in a sliding window
+            if self.normalization == "standardization":
+                temp = self.df.loc[
+                        self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size - 1],
+                        ["open", "close", "high", "low", "volume"]]
+                scaler = preprocessing.StandardScaler().fit(temp)
+                self.df.loc[self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size - 1],
+                ["open_", "close_", "high_", "low_", "volume_"]] = scaler.transform(temp)
+            state = self.df.loc[self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size - 1],
+                    self.state_list]
+            state = state.values.reshape(1,220)
+            self.state_memory.append(state)
+            self.coh_memory.append(coh)
+            self.holdings_memory.append(holdings_updated)
             return state, reward, False, {}
+
+            # if self.rolling_window:
+            #     # state - rolling_window
+            #     state = self.df.loc[self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size-1],
+            #             self.state_list]
+            #     state = state.values
+            #     # # 存入state_memory之前加入coh & holding_updated
+            #     # state_memory = state.loc[self.df.index[self.date_index + self.window_size]] = [0] * (len(self.state_list)-2) + [coh, holdings_updated]
+            #     self.state_memory.append(state)
+            # else:
+            #     # state - single_day
+            #     state = [self.df.loc[self.df.index[self.date_index], self.state_list]]
+            #     self.state_memory.append(state + [coh, holdings_updated])
+
+
 
     def seed(self, seed: Any = None) -> None:
         """设置随机种子"""
@@ -188,10 +227,7 @@ class StockLearningEnv(gym.Env):
             self, reason: str = "Last Date", reward: int = 0
     ) -> Tuple[list, int, bool, dict]:
         """terminal 的时候执行的操作"""
-        if self.rolling_window:
-            state = self.state_memory[-1][:-2]
-        else:
-            state = self.state_memory[-1][:,:-1]
+        state = self.state_memory[-1]
         self.log_step(reason=reason, terminal_reward=reward)
         gl_pct = self.account_information["total_assets"][-1] / self.initial_amount
         reward_pct = gl_pct
@@ -251,20 +287,13 @@ class StockLearningEnv(gym.Env):
     @property
     def cash_on_hand(self) -> float:
         """当前拥有的现金"""
-        if self.rolling_window:
-            print(self.state_memory)
-            coh = self.state_memory[-1].iloc[-1,-2]
-        else:
-            coh = self.state_memory[-1][-2]
+        coh = self.coh_memory[-1]
         return coh
 
     @property
     def holdings(self) -> List:
         """当前的持仓数据"""
-        if self.rolling_window:
-            holdings = self.state_memory[-1].iloc[-1,-1]
-        else:
-            holdings = self.state_memory[-1][-1]
+        holdings = self.holdings_memory[-1]
         return holdings
 
     @property
@@ -273,13 +302,14 @@ class StockLearningEnv(gym.Env):
         close = self.df.loc[self.df.index[self.date_index], "close"]
         return close
 
-    def get_state(self):
+    @property
+    def state(self):
         state1 = ['kdjk', 'kdjd', 'kdjj', 'rsi_6', 'rsi_12', 'rsi_24']
-        state2 = ['kdjk', 'kdjd', 'kdjj', 'rsi_6', 'rsi_12', 'rsi_24', "open", "close", "high", "low", "volume"]
+        state2 = ['kdjk', 'kdjd', 'kdjj', 'rsi_6', 'rsi_12', 'rsi_24', "open_", "close_", "high_", "low_", "volume_"]
         return state2
 
-
-    def get_reward(self) -> float:
+    @property
+    def reward(self) -> float:
         if self.current_step == 0:
             return 0
         else:

@@ -12,7 +12,7 @@ MDPP_P = st.sidebar.slider("MDPP_D", 0.001, 0.050, 0.03, 0.001)
 single_true = st.sidebar.checkbox("single_true", True)
 windows_size = st.sidebar.slider("windows_size", 10, 500, 50, 10)
 
-for a, b, c in os.walk("train_record"):
+for a, b, c in os.walk("../DQN/train_record"):
     train_record = c
 select_actiondf = st.sidebar.selectbox("choice_action_meomry", train_record)
 print(select_actiondf)
