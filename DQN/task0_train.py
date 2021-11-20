@@ -11,7 +11,6 @@ LastEditTime: 2021-05-05 16:49:15
 '''
 import sys, os
 import pandas as pd
-from torch.utils.checkpoint import checkpoint
 
 curr_path = os.path.dirname(__file__)
 parent_path = os.path.dirname(curr_path)
@@ -24,6 +23,8 @@ from common.utils import save_results, make_dir
 from common.plot import plot_rewards
 from DQN.agent import DQN
 from env2 import StockLearningEnv
+
+import pickle
 curr_time = datetime.datetime.now().strftime(
     "%Y%m%d-%H%M%S")  # obtain current time
 
@@ -31,15 +32,14 @@ curr_time = datetime.datetime.now().strftime(
 class DQNConfig:
     def __init__(self):
         self.algo = "DQN"  # name of algo
-        # self.env = 'CartPole-v0'
-        self.df = pd.read_csv(r"common/new_data_file/data.csv")
+        self.df = pd.read_csv(r"./common/new_data_file/data.csv")
         self.env = StockLearningEnv(self.df)
         self.result_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
                            '/' + curr_time + '/results/'  # path to save results
         self.model_path = curr_path + "/outputs/" + 'StockLearningEnv' + \
                           '/' + curr_time + '/models/'  # path to save models
-        self.train_eps = 30  # max trainng episodes
-        self.eval_eps = 50  # number of episodes for evaluating
+        self.train_eps = 1  # max trainng episodes
+        self.eval_eps = 5  # number of episodes for evaluating
         self.gamma = 0.95
         self.epsilon_start = 0.90  # start epsilon of e-greedy policy
         self.epsilon_end = 0.01
@@ -63,6 +63,7 @@ def env_agent_config(cfg, seed=1):
 
 
 def train(cfg, env, agent):
+    before_embedding = []
     print('Start to train !')
     print(f'Env:{cfg.env}, Algorithm:{cfg.algo}, Device:{cfg.device}')
     rewards = []
@@ -74,12 +75,12 @@ def train(cfg, env, agent):
         ep_step = 0
         while ep_step < (len(cfg.df) - 2*env.window_size):
             ep_step += 1
-            # action, _ = agent.choose_action(state)
             action = agent.choose_action(state)
             next_state, reward, done, _ = env.step(action)
             ep_reward += reward
             agent.memory.push(state, action, reward, next_state, done)
             state = next_state
+            before_embedding.append(state)
             agent.update()
             if done:
                 break
@@ -94,7 +95,7 @@ def train(cfg, env, agent):
         else:
             ma_rewards.append(ep_reward)
     print('Complete training！')
-    return rewards, ma_rewards
+    return rewards, ma_rewards, before_embedding
 
 
 def eval(cfg, env, agent):
@@ -106,8 +107,8 @@ def eval(cfg, env, agent):
         ep_reward = 0  # reward per episode
         state = env.reset()
         while True:
-            action, _ = agent.predict(state)
-            next_state, reward, done, _ = env.step(action, _)
+            action = agent.predict(state)
+            next_state, reward, done, _ = env.step(action)
             state = next_state
             ep_reward += reward
             if done:
@@ -130,7 +131,7 @@ if __name__ == "__main__":
 
     # train
     env, agent = env_agent_config(cfg, seed=1)
-    rewards, ma_rewards = train(cfg, env, agent)
+    rewards, ma_rewards, before_embedding = train(cfg, env, agent)
     make_dir(cfg.result_path, cfg.model_path)
     agent.save(path=cfg.model_path)
     save_results(rewards, ma_rewards, tag='train', path=cfg.result_path)
@@ -138,6 +139,11 @@ if __name__ == "__main__":
                  algo=cfg.algo, path=cfg.result_path)
     end_time = datetime.datetime.now()
     print("training finished, time{}".format(end_time - start_time))
+
+    # save before_embedding
+    with open('before_embedding.pkl', 'wb') as f:
+        pickle.dump(before_embedding, f)
+
 
     # eval
     env, agent = env_agent_config(cfg, seed=10)

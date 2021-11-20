@@ -12,7 +12,6 @@ LastEditTime: 2021-05-07 16:30:05
 '''off-policy
 '''
 
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -23,7 +22,6 @@ from common.memory import ReplayBuffer
 from common.model import MLP
 
 import torch.nn.functional as F
-from torch.distributions import Categorical
 
 class DQN:
     def __init__(self, state_dim, action_dim, cfg):
@@ -43,37 +41,26 @@ class DQN:
             target_param.data.copy_(param.data)
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=cfg.lr)
         self.memory = ReplayBuffer(cfg.memory_capacity)
-        # self.REWARD_SCALE = 0.5/action_dim
 
     def choose_action(self, state):
         '''选择动作
         '''
         self.frame_idx += 1
         if random.random() > self.epsilon(self.frame_idx):
-            # action, _ = self.predict(state)
             action = self.predict(state)
         else:
             action = random.randrange(self.action_dim)
-            # _ = [0, 0, 0]
         return action
-        # return action, _
 
     def predict(self, state):
         # 不求导
         with torch.no_grad():
             state = torch.tensor([state], device=self.device, dtype=torch.float32)
             q_values = self.policy_net(state)
-            action = list(q_values[0][0]).index(q_values[0][0].max())
+            action = q_values[0][0].tolist().index(q_values[0][0].max())
             # action = q_values.max(1)[1].item()
-        # return action, action_probs.numpy()[0]
         return action
 
-    # def predict(self,state):
-    #     with torch.no_grad():
-    #         state = torch.tensor([state], device=self.device, dtype=torch.float32)
-    #         q_values = self.policy_net(state)
-    #         action = q_values.max(1)[1].item()
-    #     return action
 
     def update(self):
         if len(self.memory) < self.batch_size:
@@ -103,7 +90,6 @@ class DQN:
         # 计算所有next states的V(s_{t+1})，即通过target_net中选取reward最大的对应states
         next_q_values = self.target_net(next_state_batch)[0].max(
             1)[0].detach()  # 比如tensor([ 0.0060, -0.0171,...,])
-        # print(f'next_q_values{next_q_values}')
         # 计算 expected_q_value
         # 对于终止状态，此时done_batch[0]=1, 对应的expected_q_value等于reward
         expected_q_values = reward_batch + \
@@ -129,3 +115,5 @@ class DQN:
         self.target_net.load_state_dict(torch.load(path+'dqn_checkpoint.pth'))
         for target_param, param in zip(self.target_net.parameters(), self.policy_net.parameters()):
             param.data.copy_(target_param.data)
+
+

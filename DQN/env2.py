@@ -7,6 +7,7 @@ import time
 from gym import spaces
 from sklearn import preprocessing
 
+# 为了print时看到更多的数据，方便debug
 pd.set_option('display.max_columns', 20)
 pd.set_option('display.max_rows', 20)
 
@@ -30,6 +31,7 @@ class StockLearningEnv(gym.Env):
 
         self.df = df
         self.dates = df['date']
+        self.date_index = 0
         self.df = self.df.set_index('date')  # 把date设为df的索引
         self.assets = df['tic']
         self.patient = patient
@@ -58,7 +60,7 @@ class StockLearningEnv(gym.Env):
             "reward": []
         }
         self.rolling_window = True
-        self.normalization = 'standardization' # choose thw way to process normalization ('div_self' / 'div_close' / 'standardization')
+        self.normalization = 'div_self' # choose thw way to process normalization ('div_self' / 'div_close' / 'standardization')
         self.do_normalization()
 
 
@@ -68,6 +70,7 @@ class StockLearningEnv(gym.Env):
         if self.normalization == 'div_self':
             # 将ochlv处理为涨跌幅
             self.df[after_norm] = self.df[norm_list].pct_change(-1)
+            self.df = self.df.dropna()
         elif self.normalization == 'div_close':
             # 将ochl处理为相较于前一天close的比例
             temp = self.df[["open", "close", "high", "low"]].values[1:] / self.df[["close"]].values[:-1]
@@ -76,13 +79,8 @@ class StockLearningEnv(gym.Env):
             self.df[["volume_"]] = self.df[["volume"]].pct_change(-1)
             self.df[["open_", "close_", "high_", "low_"]] = temp
         elif self.normalization == 'standardization':
+            # 滑动窗口做standardization需要同步
             pass
-            # for i in range(0, len(self.dates) - self.window_size,self.window_size):
-            #     temp = self.df.loc[self.df.index[i]:self.df.index[i + self.window_size - 1],norm_list]
-            #     scaler = preprocessing.StandardScaler().fit(temp)
-            #     self.df.loc[self.df.index[i]:self.df.index[i + self.window_size - 1],after_norm] = scaler.transform(temp)
-            # self.df = self.df.dropna()
-            # self.df.to_csv("test_st.csv")
 
 
     def reset(self) -> np.ndarray:
@@ -104,18 +102,11 @@ class StockLearningEnv(gym.Env):
         }
         init_state = np.zeros(self.state_space)
         self.state_memory.append(init_state)
-        # else:
-        #     init_state = [0] * self.state_space
-        #     self.state_memory.append(init_state + [0, 0])
-        return init_state
+        return np.array([init_state])
 
     def step(
             self, actions: np.ndarray
     ) -> Tuple[list, float, bool, dict]:
-    # def step(
-    #         self, actions: np.ndarray, action_p
-    # ) -> Tuple[list, float, bool, dict]:
-        # log
         self.log_header()
         if (self.current_step + 1) % self.print_verbosity == 0:
             self.log_step(reason="update")
@@ -126,17 +117,17 @@ class StockLearningEnv(gym.Env):
                 self.save_transaction_information().to_csv(save_path)
             return self.return_terminal(reward=self.reward)
         else:
-            real_action = actions - 1
-            transactions = real_action * 1000
+            self.action = actions - 1
+            transactions = self.action * 1000
             begin_cash = self.cash_on_hand
             assert_value = np.dot(self.holdings, self.closings)  # 目前总持股金额
             reward = self.reward
-
+            #save account_information
             self.account_information["cash"].append(begin_cash)
             self.account_information["asset_value"].append(assert_value)
             self.account_information["total_assets"].append(begin_cash + assert_value)
             self.account_information["reward"].append(reward)
-            self.actions_memory.append(real_action)
+            self.actions_memory.append(self.action)
             self.transaction_memory.append(transactions)
 
             sells = -np.clip(transactions, -np.inf, 0)
@@ -146,26 +137,11 @@ class StockLearningEnv(gym.Env):
             buys = np.clip(transactions, 0, np.inf)
             spend = np.dot(buys, self.closings)
             costs += spend * self.buy_cost_pct
-
-            # 如果为负数，我们可以理解为做空，因此暂时不用考虑买不买得起，
-            # if (spend + costs) > coh:  # 如果买不起
-            #     if self.patient:
-            #         transactions = np.where(transactions > 0, 0, transactions)
-            #         spend = 0
-            #         costs = 0
-            #     else:
-            #         return self.return_terminal(
-            #             reason="CASH SHORTAGE", reward=self.reward
-            #         )
-            # assert (spend + costs) <= coh
-            
             coh = coh - spend - costs
             holdings_updated = self.holdings + transactions
             self.date_index += 1
 
-
-            #if (self.date_index + self.window_size - 1) < len(self.df):
-                # do standardization in a sliding window
+            # do standardization in a sliding window
             if self.normalization == "standardization":
                 temp = self.df.loc[
                         self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size - 1],
@@ -180,20 +156,6 @@ class StockLearningEnv(gym.Env):
             self.coh_memory.append(coh)
             self.holdings_memory.append(holdings_updated)
             return state, reward, False, {}
-
-            # if self.rolling_window:
-            #     # state - rolling_window
-            #     state = self.df.loc[self.df.index[self.date_index]:self.df.index[self.date_index + self.window_size-1],
-            #             self.state_list]
-            #     state = state.values
-            #     # # 存入state_memory之前加入coh & holding_updated
-            #     # state_memory = state.loc[self.df.index[self.date_index + self.window_size]] = [0] * (len(self.state_list)-2) + [coh, holdings_updated]
-            #     self.state_memory.append(state)
-            # else:
-            #     # state - single_day
-            #     state = [self.df.loc[self.df.index[self.date_index], self.state_list]]
-            #     self.state_memory.append(state + [coh, holdings_updated])
-
 
 
     def seed(self, seed: Any = None) -> None:
@@ -262,12 +224,9 @@ class StockLearningEnv(gym.Env):
                     "close": self.df["close"][-len(self.account_information["cash"]):],
                     "episode": self.episode,
                     "actions": self.actions_memory,
-                    "score0": self.action_probability0,
-                    "score1": self.action_probability1,
-                    "score2": self.action_probability2,
                     "transactions": self.transaction_memory,
                     "total_assets": self.account_information["total_assets"],
-                    "reward": self.get_reward(),
+                    "reward": self.reward,
                     "assets_baseline": self.assets_baseline()
                 })
             return action_df
@@ -308,23 +267,39 @@ class StockLearningEnv(gym.Env):
         state2 = ['kdjk', 'kdjd', 'kdjj', 'rsi_6', 'rsi_12', 'rsi_24', "open_", "close_", "high_", "low_", "volume_"]
         return state2
 
+
     @property
     def reward(self) -> float:
-        if self.current_step == 0:
-            return 0
+        # init
+        epsilon = 0.001
+        signal_dict = {'-':0,"v":-1,"^":1}
+        current_date = self.df.index[self.date_index]
+        signal = signal_dict.get(self.df.loc[self.df.index[self.date_index],'landmark'])
+        # get y
+        y_current = self.closings
+        y_valley = self.df[(self.df.landmark == 'v') & (self.df.index > current_date)].iloc[0,4]
+        y_peak = self.df[(self.df.landmark == '^') & (self.df.index > current_date)].iloc[0,4]
+        y_valley_date = self.df[(self.df.landmark == 'v') & (self.df.index > current_date)].index[0]
+        y_peak_date = self.df[(self.df.landmark == '^') & (self.df.index > current_date)].index[0]
+        # calculate reward
+        if self.action != 0:
+            reward = (y_peak - y_valley)/(y_peak - y_current + epsilon) if (y_peak_date > y_valley_date) else (y_peak - y_valley)/(y_current - y_valley + epsilon)
+            if signal != self.action:
+                reward = -reward
         else:
-            # reward1: only total assets
-            reward1 = self.account_information["total_assets"][-1]
-            # reward2: total assets + retreat
-            assets = self.account_information["total_assets"][-1]
-            retreat = 0
-            if assets >= self.max_total_assets:
-                self.max_total_assets = assets
-            else:
-                retreat = assets / self.max_total_assets - 1
+            reward = 0
+        print(np.tanh(reward))
+        return np.tanh(reward)
 
-            reward2 = assets / self.initial_amount - 1
-            reward2 += retreat
-            return reward1
+if __name__ == "__main__":
+    df = pd.read_csv(r"./common/new_data_file/data.csv",index_col=0)
+    s = StockLearningEnv(df)
+    print(s.reward)
+
+
+    
+
+
+
 
 
