@@ -269,11 +269,71 @@
 #     print(a.attr3)
 
 
-import pandas as pd
-from datetime import datetime
+# import pandas as pd
+# from datetime import datetime
 
-df = pd.read_csv('./common/raw_data.csv')
-df["date"].dtypes()
-df["date"] = df.trade_date.apply(lambda x: datetime.strptime(x[:4] + '-' + x[4:6] + '-' + x[6:], "%Y-%m-%d"))
-print(df.head())
+# df = pd.read_csv('./common/raw_data.csv')
+# df["date"].dtypes()
+# df["date"] = df.trade_date.apply(lambda x: datetime.strptime(x[:4] + '-' + x[4:6] + '-' + x[6:], "%Y-%m-%d"))
+# print(df.head())
 # print(type(df.trade_date.values[:1]))
+
+# reward version1
+'''
+    @property
+    def reward(self) -> float:
+        # init
+        epsilon = 0.001
+        signal_dict = {'-':0,"v":-1,"^":1}
+        current_date = self.df.index[self.date_index + self.window_size]
+        signal = signal_dict.get(self.df.loc[self.df.index[self.date_index+ self.window_size],'landmark'])
+        # get y
+        y_current = self.closings
+        y_valley = self.df[(self.df.landmark == 'v') & (self.df.index > current_date)].iloc[0,4]
+        y_peak = self.df[(self.df.landmark == '^') & (self.df.index > current_date)].iloc[0,4]
+        y_valley_date = self.df[(self.df.landmark == 'v') & (self.df.index > current_date)].index[0]
+        y_peak_date = self.df[(self.df.landmark == '^') & (self.df.index > current_date)].index[0]
+        # calculate reward
+        if self.action != 0:
+            reward = (y_peak - y_valley)/(y_peak - y_current + epsilon) if (y_peak_date > y_valley_date) else (y_peak - y_valley)/(y_current - y_valley + epsilon)
+            if signal != self.action:
+                reward = -reward
+        else:
+            reward = 0
+        return np.tanh(reward)
+'''
+
+# reward version2
+''' 
+    @property
+    def reward(self) -> float :
+        # init
+        epsilon = 0.005
+        signal_dict = {0:'-',-1:"v",1:"^"}
+        action_signal = signal_dict.get(self.action)
+        current_signal = self.df.loc[self.df.index[self.date_index+ self.window_size],'landmark']
+        current_day = self.df.day[self.date_index + self.window_size]
+
+        if action_signal == '-':
+            reward = 0.5 if current_signal == action_signal else -0.5
+        else:
+            # get same_signal
+            same_signal = self.df[(self.df.landmark == current_signal)]
+            same_signal = same_signal.reset_index()
+            current_day_new_index = same_signal[same_signal.day == current_day].index.tolist()[0]
+            same_signal_1 = same_signal[same_signal.index == (current_day_new_index - 1)]
+            same_signal_2 = same_signal[same_signal.index == (current_day_new_index + 1)]
+            a = (current_day - same_signal_1.day).values
+            b = (same_signal_2.day - current_day).values
+            same_signal = same_signal_1 if a<b else same_signal_2
+            # get different_signal
+            diff = 'v' if current_signal == '^' else '^'
+            diff_signal = self.df[(self.df.landmark == diff) & (self.df.day.values > same_signal.day.values)]
+            # get y
+            y_diff = diff_signal.iloc[0,4]
+            y_same = same_signal.close.values
+            y_current = self.closings
+            # calculate reward
+            reward = np.tanh(np.log(abs(y_diff - y_current) / abs(y_same - y_current + epsilon))).tolist()[0]
+        return  reward
+'''
